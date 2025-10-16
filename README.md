@@ -66,7 +66,7 @@ base, tools, serialport, declarative,  wayland, [quickcontrols2, graphicaleffect
 Then run:
 ```sh
 mkdir build && cd build
-qmake ../qFlipper.pro PREFIX=/path/to/install/dir -spec linux-g++ CONFIG+=qtquickcompiler && 
+qmake ../qFlipper.pro PREFIX=~/ -spec linux-g++ CONFIG+=qtquickcompiler DEFINES+=DISABLE_APPLICATION_UPDATES && 
 make qmake_all && make && make install
 ```
 **Caution:** `make install`ing to the system prefix is not recommended. Instead, use this method for building distro-specific packages. 
