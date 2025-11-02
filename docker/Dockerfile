@@ -59,7 +59,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     qml6-module-qtquick-controls \
     qml6-module-qtquick-window \
     qml6-module-qtquick-layouts \
-    libqt6core5compat6-dev \
+    libqt6core5compat6-dev
 
 RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
     -O /usr/bin/linuxdeploy && chmod +x /usr/bin/linuxdeploy
