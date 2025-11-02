@@ -4,12 +4,12 @@ WORKDIR /project
 
 # Enable 'universe' repository for Qt6 packages on Ubuntu 22.04
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends software-properties-common && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common && \
     DEBIAN_FRONTEND=noninteractive add-apt-repository -y universe && \
     apt-get update
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
     software-properties-common \
     wget \
     file \
@@ -44,7 +44,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     libopengl-dev
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
     qt6-base-dev \
     qt6-base-dev-tools \
     qt6-declarative-dev \
@@ -60,7 +60,6 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && \
     qml6-module-qtquick-window \
     qml6-module-qtquick-layouts \
     libqt6core5compat6-dev \
-    && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN wget https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage \
     -O /usr/bin/linuxdeploy && chmod +x /usr/bin/linuxdeploy
