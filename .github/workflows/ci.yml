@@ -50,12 +50,18 @@ jobs:
           echo "QFLIPPER_VERSION=${version}" >> "$GITHUB_ENV"
 
       - name: Build application
+        env:
+          # Embedded into the AppImage's .upd_info section by linuxdeploy's appimage plugin.
+          # AppImage updaters such as Gear Lever read it, look up the latest GitHub release,
+          # and compare the SHA-1 in the matching .zsync against the installed file.
+          LDAI_UPDATE_INFORMATION: gh-releases-zsync|${{ github.repository_owner }}|${{ github.event.repository.name }}|latest|qFlipper-x86_64-nightly-*.AppImage.zsync
         run: ./build_linux.sh
 
-      - name: Smoke test CLI
+      - name: Smoke test
         run: |
           set -euo pipefail
           APPIMAGE_EXTRACT_AND_RUN=1 ./build/qFlipper-x86_64.AppImage cli --version
+          readelf --string-dump=.upd_info --wide ./build/qFlipper-x86_64.AppImage | grep -F 'gh-releases-zsync|'
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
@@ -128,6 +134,38 @@ jobs:
           max_releases: 4
           ignore_hash: false
 
+      # AppImage updaters (Gear Lever, AppImageUpdate) find updates through a .zsync named
+      # after the AppImage: Gear Lever takes the first asset matching the embedded pattern
+      # and compares its SHA-1 with the installed file. deploy-nightly only prunes assets
+      # ending in .AppImage, so exactly one .zsync is kept here, for the newest AppImage;
+      # an older one left behind could be matched first and offer a downgrade.
+      - name: Publish zsync for AppImage updaters
+        if: steps.appimage.outputs.uploaded == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_ID: ${{ steps.release.outputs.id }}
+          ASSET_NAME: ${{ steps.appimage.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 update -q
+          sudo apt-get -o Acquire::Retries=5 -o Acquire::http::Timeout=30 install -y -q --no-install-recommends zsync
+
+          # zsyncmake records the input's file name and the relative download URL, so
+          # run it on a link carrying the published name.
+          zsync_name="${ASSET_NAME}.zsync"
+          ln dist/qFlipper-x86_64.AppImage "dist/${ASSET_NAME}"
+          (cd dist && zsyncmake -u "${ASSET_NAME}" -o "${zsync_name}" "${ASSET_NAME}")
+          head -n 9 "dist/${zsync_name}"
+
+          gh release upload "${RELEASE_TAG}" "dist/${zsync_name}" --clobber
+
+          gh api --paginate "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets" \
+            --jq ".[] | select((.name | endswith(\".zsync\")) and .name != \"${zsync_name}\") | \"\(.id) \(.name)\"" |
+          while read -r id name; do
+            echo "Deleting stale ${name}"
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}"
+          done
+
       # Written only after a successful upload, so the notes never describe a build
       # that was not published (deploy-nightly skips commits it already published).
       - name: Update release notes
@@ -151,6 +189,8 @@ jobs:
             echo "| SHA-256 | \`${sha256}\` |"
             echo "| Commit | [\`${GITHUB_SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |"
             echo "| Run | [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) |"
+            echo
+            echo "The AppImage carries update information, so [Gear Lever](https://github.com/mijorus/gearlever) and other AppImage updaters pick up new nightlies automatically."
             echo
             echo "To use your Flipper as a normal user, install the udev rules once:"
             echo
