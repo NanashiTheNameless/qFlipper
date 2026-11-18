@@ -65,7 +65,7 @@ Build requirements:
 
 Make sure to install the following Qt modules (the exact package names might differ slightly depending on your Linux distribution): 
 ```
-base, tools, serialport, declarative,  wayland, [quickcontrols2, graphicaleffects] (Qt5 only), qt5-compat (Qt6 only)
+base, tools, serialport, declarative, [quickcontrols2, graphicaleffects] (Qt5 only), qt5-compat (Qt6 only)
 ```
 Then run:
 ```sh

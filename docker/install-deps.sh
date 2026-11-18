@@ -14,7 +14,8 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 
 apt-get update
-apt-get install -y --no-install-recommends \
+# Recommends are kept: several Qt runtime plugins are only recommended by the -dev packages.
+apt-get install -y \
     wget \
     file \
     pkg-config \
@@ -45,7 +46,6 @@ apt-get install -y --no-install-recommends \
     libx11-xcb-dev \
     libopengl-dev \
     qt6-base-dev \
-    qt6-wayland-dev \
     qt6-declarative-dev \
     qt6-serialport-dev \
     qt6-shadertools-dev \
