@@ -37,9 +37,21 @@ jobs:
           # Full history and tags: the version and commit are read from git at qmake time.
           fetch-depth: 0
 
+      # The runner's apt mirror speed varies wildly (the same 95 MB has taken 7 s and 18 min),
+      # so keep the downloaded .debs. A new cache is saved every run; apt fetches only what is
+      # missing or newer, and stale versions age out with old caches.
+      - name: Restore apt package cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ runner.temp }}/apt-archives
+          key: apt-ubuntu-24.04-${{ hashFiles('docker/install-deps.sh') }}-${{ github.run_id }}
+          restore-keys: |
+            apt-ubuntu-24.04-${{ hashFiles('docker/install-deps.sh') }}-
+            apt-ubuntu-24.04-
+
       - name: Install build dependencies
         timeout-minutes: 20
-        run: sudo ./docker/install-deps.sh
+        run: sudo APT_ARCHIVES_DIR="${RUNNER_TEMP}/apt-archives" ./docker/install-deps.sh
 
       - name: Stamp version
         id: version
