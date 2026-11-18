@@ -9,9 +9,9 @@ APPDIR_PREFIX="$PWD/$BUILDDIR/AppDir/usr"
 LIBSSL3_OVERRIDE="$(ldconfig -p | grep x86-64 | grep -oP '/[^\s]+/libssl.so.3' | head -n1)"
 
 export OUTPUT="$TARGET-x86_64.AppImage"
+# Run linuxdeploy and its plugin without FUSE (CI runners and unprivileged containers lack it)
+export APPIMAGE_EXTRACT_AND_RUN="${APPIMAGE_EXTRACT_AND_RUN:-1}"
 export QML_SOURCES_PATHS="$PWD/application"
-export EXTRA_QT_PLUGINS="waylandcompositor"
-export EXTRA_PLATFORM_PLUGINS="libqwayland-egl.so;libqwayland-generic.so"
 
 mkdir -p "$BUILDDIR" && cd "$BUILDDIR"
 

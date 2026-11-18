@@ -3,6 +3,8 @@
 set -e
 
 unset QT_STYLE_OVERRIDE
+# Only X11 is supported; on Wayland sessions this runs through XWayland
+export QT_QPA_PLATFORM=xcb
 export QT_QPA_PLATFORMTHEME=xdgdesktopportal
 
 THIS_DIR="$(readlink -f "$(dirname "$0")")"

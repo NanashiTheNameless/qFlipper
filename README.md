@@ -11,6 +11,8 @@ Download official qFlipper builds here: [update.flipperzero.one](https://update.
 
 <a href="https://update.flipperzero.one"><img width="300" alt="download qFlipper Button" src="https://cdn.flipperzero.one/download_qFlipper_button.png" /></a>
 
+Nightly Linux AppImages of this fork (built on Ubuntu 24.04) are published to the [`nightly` release](../../releases/tag/nightly).
+
 
 ## Features
 * Update Flipper's firmware and supplemental data with a press of one button
@@ -43,6 +45,8 @@ Note: STM32 Bootloader driver is not provided in this repository.
 
 ### Linux
 #### Docker build (AppImage, official)
+Builds target Ubuntu 24.04 only. On an Ubuntu 24.04 host you can skip Docker and run `sudo ./docker/install-deps.sh && ./build_linux.sh` directly.
+
 
 Setup dev container by running:
 ```sh 
@@ -61,7 +65,7 @@ Build requirements:
 
 Make sure to install the following Qt modules (the exact package names might differ slightly depending on your Linux distribution): 
 ```
-base, tools, serialport, declarative,  wayland, [quickcontrols2, graphicaleffects] (Qt5 only), qt5-compat (Qt6 only)
+base, tools, serialport, declarative, [quickcontrols2, graphicaleffects] (Qt5 only), qt5-compat (Qt6 only)
 ```
 Then run:
 ```sh

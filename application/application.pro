@@ -33,7 +33,7 @@ QML_IMPORT_PATH += $$PWD/imports
 
 unix:!macx {
     QTPLUGIN += qxdgdesktopportal
-    QTPLUGIN.platforms += qxcb qwayland-egl qwayland-generic
+    QTPLUGIN.platforms += qxcb
 }
 
 win32:!win32-g++ {

@@ -1,42 +1,177 @@
 name: 'CI'
 
+# Builds the Linux AppImage on Ubuntu 24.04 for every push and pull request.
+# Pushes to the default branch (and manual runs on it) also publish the build to
+# a rolling release tagged `nightly`, using deploy-nightly to stamp the asset name
+# with the date and commit and to prune older nightly AppImages.
+
 on:
   push:
+    # A tags filter alone would stop branch pushes from triggering, so list both.
+    branches:
+      - '**'
+    tags-ignore:
+      - nightly
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: nightly
+  RELEASE_NAME: Nightly
 
 jobs:
   build_linux:
-    runs-on: ubuntu-latest
+    name: Build AppImage (Ubuntu 24.04)
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
-      - name: 'Wipe workspace'
-        run: find ./ -mount -maxdepth 1 -exec rm -rf {} \;
-
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
-          submodules: true
+          submodules: recursive
+          # Full history and tags: the version and commit are read from git at qmake time.
           fetch-depth: 0
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install build dependencies
+        run: sudo ./docker/install-deps.sh
 
-      - name: Build and push
-        uses: docker/build-push-action@v5
-        with:
-          push: false
-          context: docker
-          tags: qflipper-build:latest
-          load: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: Stamp version
+        id: version
+        run: |
+          set -euo pipefail
+          version="nightly-$(date -u +'%Y.%m.%d')-$(git rev-parse --short=7 HEAD)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "QFLIPPER_VERSION=${version}" >> "$GITHUB_ENV"
 
-      - name: Build application in docker
-        run: docker run --rm --privileged -v $(pwd):/project qflipper-build:latest /project/build_linux.sh
+      - name: Build application
+        run: ./build_linux.sh
 
-      - name: Publish application
-        uses: actions/upload-artifact@v4
+      - name: Smoke test CLI
+        run: |
+          set -euo pipefail
+          APPIMAGE_EXTRACT_AND_RUN=1 ./build/qFlipper-x86_64.AppImage cli --version
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v7
         with:
           name: qFlipper-x86_64.AppImage
-          path: |
-                ./build/qFlipper-x86_64.AppImage
+          path: ./build/qFlipper-x86_64.AppImage
           if-no-files-found: error
+
+  nightly:
+    name: Publish nightly release
+    needs: build_linux
+    if: >-
+      github.ref == format('refs/heads/{0}', github.event.repository.default_branch) &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # One rolling release means one publisher at a time; queue rather than cancel,
+    # so a run is never killed between moving the tag and uploading the asset.
+    concurrency:
+      group: nightly-release
+      cancel-in-progress: false
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: qFlipper-x86_64.AppImage
+          path: dist
+
+      - name: Move nightly tag
+        uses: NanashiTheNameless/action-create-tag@main
+        with:
+          tag: ${{ env.RELEASE_TAG }}
+          commit_sha: ${{ github.sha }}
+          message: ${{ needs.build_linux.outputs.version }}
+          force_push_tag: true
+          tag_exists_error: false
+
+      - name: Ensure nightly release exists
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_NAME}" \
+              --notes "Build in progress." \
+              --verify-tag \
+              --latest=true
+          fi
+
+          gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}" \
+            --jq '"id=\(.id)\nupload_url=\(.upload_url)"' >> "$GITHUB_OUTPUT"
+
+      - name: Publish nightly AppImage
+        id: appimage
+        uses: NanashiTheNameless/deploy-nightly@master
+        with:
+          upload_url: ${{ steps.release.outputs.upload_url }}
+          release_id: ${{ steps.release.outputs.id }}
+          asset_path: dist/qFlipper-x86_64.AppImage
+          asset_name: qFlipper-x86_64-nightly-$$.AppImage
+          asset_content_type: application/vnd.appimage
+          max_releases: 4
+          ignore_hash: false
+
+      # Written only after a successful upload, so the notes never describe a build
+      # that was not published (deploy-nightly skips commits it already published).
+      - name: Update release notes
+        if: steps.appimage.outputs.uploaded == 'yes'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build_linux.outputs.version }}
+          ASSET_URL: ${{ steps.appimage.outputs.url }}
+          ASSET_NAME: ${{ steps.appimage.outputs.asset_name }}
+        run: |
+          set -euo pipefail
+          notes="${RUNNER_TEMP}/notes.md"
+          sha256="$(sha256sum < dist/qFlipper-x86_64.AppImage | cut -d' ' -f1)"
+          {
+            echo "Rolling nightly build of qFlipper for Linux x86_64, built on Ubuntu 24.04 and republished on every push to \`${{ github.event.repository.default_branch }}\`."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Download | [${ASSET_NAME}](${ASSET_URL}) |"
+            echo "| SHA-256 | \`${sha256}\` |"
+            echo "| Commit | [\`${GITHUB_SHA:0:7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}) |"
+            echo "| Run | [${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) |"
+            echo
+            echo "To use your Flipper as a normal user, install the udev rules once:"
+            echo
+            echo '```sh'
+            echo "chmod +x ${ASSET_NAME}"
+            echo "./${ASSET_NAME} rules install"
+            echo '```'
+            echo
+            echo "<details><summary>Commit message</summary>"
+            echo
+            echo '```'
+            git log -1 --pretty=%B "${GITHUB_SHA}"
+            echo '```'
+            echo
+            echo "</details>"
+          } > "${notes}"
+
+          gh release edit "${RELEASE_TAG}" \
+            --title "${RELEASE_NAME} (${VERSION})" \
+            --notes-file "${notes}" \
+            --prerelease=false \
+            --latest=true
+
+      - name: Report skipped publish
+        if: steps.appimage.outputs.uploaded != 'yes'
+        run: echo "::notice::This commit is already published on ${RELEASE_TAG}; nothing was uploaded."
