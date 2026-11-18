@@ -27,9 +27,13 @@ unix:!macx {
     error("Unsupported OS or compiler")
 }
 
-GIT_VERSION = $$system("git describe --tags --abbrev=0","lines", HAS_VERSION)
-!equals(HAS_VERSION, 0) {
-    GIT_VERSION = unknown
+# QFLIPPER_VERSION in the environment overrides the git-derived version (set by nightly CI builds)
+GIT_VERSION = $$(QFLIPPER_VERSION)
+isEmpty(GIT_VERSION) {
+    GIT_VERSION = $$system("git describe --tags --abbrev=0 --exclude=nightly","lines", HAS_VERSION)
+    !equals(HAS_VERSION, 0)|isEmpty(GIT_VERSION) {
+        GIT_VERSION = unknown
+    }
 }
 
 GIT_COMMIT = $$system("git rev-parse --short=8 HEAD","lines", HAS_COMMIT)
