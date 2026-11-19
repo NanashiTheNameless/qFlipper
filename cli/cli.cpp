@@ -3,6 +3,9 @@
 #include <QDebug>
 #include <QLoggingCategory>
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "logger.h"
 #include "preferences.h"
 
@@ -10,6 +13,17 @@
 #include "flipperzero/devicestate.h"
 
 Q_LOGGING_CATEGORY(LOG_CLI, "CLI")
+
+// Leave the process from inside the Cli constructor, before the event loop runs.
+// By then ApplicationBackend has already started worker threads (e.g. the network
+// thread fetching update information); std::exit() would run static destructors
+// underneath them and intermittently crash (QMutex destroyed while locked, SIGSEGV
+// in QSslSocketPrivate). std::_Exit() skips those destructors.
+[[noreturn]] static void exitEarly(int code)
+{
+    std::fflush(nullptr);
+    std::_Exit(code);
+}
 
 Cli::Cli(int argc, char *argv[]):
     QCoreApplication(argc, argv),
@@ -111,7 +125,17 @@ void Cli::initParser()
     m_parser.addVersionOption();
     m_parser.addHelpOption();
 
-    m_parser.process(*this);
+    // Not QCommandLineParser::process(): its help/version/error handling calls std::exit().
+    if(!m_parser.parse(arguments())) {
+        std::fprintf(stderr, "%s: %s\n", qUtf8Printable(applicationName()), qUtf8Printable(m_parser.errorText()));
+        exitEarly(EXIT_FAILURE);
+    } else if(m_parser.isSet(QStringLiteral("version"))) {
+        std::printf("%s %s\n", qUtf8Printable(applicationName()), qUtf8Printable(applicationVersion()));
+        exitEarly(EXIT_SUCCESS);
+    } else if(m_parser.isSet(QStringLiteral("help")) || m_parser.isSet(QStringLiteral("help-all"))) {
+        std::fputs(qUtf8Printable(m_parser.helpText()), stdout);
+        exitEarly(EXIT_SUCCESS);
+    }
 }
 
 void Cli::processOptions()
@@ -142,7 +166,8 @@ void Cli::processArguments()
     } else if(args.startsWith(QStringLiteral("core2fus"))) {
         beginCore2FUS();
     } else {
-        m_parser.showHelp(-1);
+        std::fputs(qUtf8Printable(m_parser.helpText()), stdout);
+        exitEarly(-1);
     }
 }
 
@@ -159,7 +184,7 @@ void Cli::processDebugLevelOption()
 
     if(!canConvert || (num < 0 || num > 2)) {
         qCCritical(LOG_CLI) << "Debug level must be one of the following values: 0, 1, 2.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     globalLogger->setLogLevel((Logger::LogLevel)num);
@@ -178,7 +203,7 @@ void Cli::processRepeatNumberOption()
 
     if(!canConvert || (num < 0)) {
         qCCritical(LOG_CLI) << "Repeat number must be a whole non-negative number.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     qCInfo(LOG_CLI).noquote() << "Will repeat the operation" << (num ? QStringLiteral("%1 times.").arg(num) : QStringLiteral("indefinitely."));
@@ -204,7 +229,7 @@ void Cli::processUpdateChannelOption()
 
     if(!allowedChannelNames.contains(channelName)) {
         qCCritical(LOG_CLI) << "Unknown update channel. Possible channels are:" << allowedChannelNames;
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     globalPrefs->setFirmwareUpdateChannel(channelName);
@@ -244,7 +269,7 @@ void Cli::beginErase()
 void Cli::beginWipe()
 {
     qCCritical(LOG_CLI) << "Wipe is not implemented yet. Sorry!";
-    std::exit(-1);
+    exitEarly(-1);
 }
 
 void Cli::beginFirmware()
@@ -254,7 +279,7 @@ void Cli::beginFirmware()
 
     if(!arg.endsWith(QStringLiteral(".dfu"), Qt::CaseInsensitive)) {
         qCCritical(LOG_CLI) << "Please provide a firmware file in DFUse format.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     m_fileParameter = QUrl::fromLocalFile(arg);
@@ -270,7 +295,7 @@ void Cli::beginCore2Radio()
 
     if(!arg.endsWith(QStringLiteral(".bin"), Qt::CaseInsensitive)) {
         qCCritical(LOG_CLI) << "Please provide a firmware file in .bin format.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     m_fileParameter = QUrl::fromLocalFile(arg);
@@ -289,7 +314,7 @@ void Cli::beginCore2FUS()
 
     if(!arg1.endsWith(QStringLiteral(".bin"), Qt::CaseInsensitive)) {
         qCCritical(LOG_CLI) << "Please provide a firmware file in .bin format.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     m_fileParameter = QUrl::fromLocalFile(arg1);
@@ -299,7 +324,7 @@ void Cli::beginCore2FUS()
 
     if(!canConvert) {
         qCCritical(LOG_CLI) << "Please provide a valid hexadecimal address.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 
     m_pendingOperation = Core2FUS;
@@ -343,6 +368,6 @@ void Cli::verifyArgumentCount(int num)
 
     if(argCount != num) {
         qCCritical(LOG_CLI).nospace() << "Expected " << num << " arguments, got " << argCount << ". Exiting.";
-        std::exit(-1);
+        exitEarly(-1);
     }
 }

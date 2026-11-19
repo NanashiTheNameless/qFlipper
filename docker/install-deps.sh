@@ -16,6 +16,13 @@ export DEBIAN_FRONTEND=noninteractive
 # Retry and time out instead of stalling for the whole job on a slow mirror.
 APT_OPTS=(-o Acquire::Retries=5 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 
+# Optional: download packages into (and reuse them from) APT_ARCHIVES_DIR, so CI can
+# cache the .debs between runs instead of depending on the mirror's speed every time.
+if [ -n "${APT_ARCHIVES_DIR:-}" ]; then
+    mkdir -p "${APT_ARCHIVES_DIR}/partial"
+    APT_OPTS+=(-o "Dir::Cache::archives=${APT_ARCHIVES_DIR}" -o APT::Keep-Downloaded-Packages=true)
+fi
+
 apt-get "${APT_OPTS[@]}" update
 # No Recommends: they pull in hundreds of MB (ffmpeg, LLVM, ...) that the AppImage never uses.
 # The Qt plugins it bundles (xcb, xcbglintegrations, tls, imageformats) come from hard
@@ -67,6 +74,11 @@ apt-get "${APT_OPTS[@]}" install -y --no-install-recommends \
     qml6-module-qtquick-layouts \
     qml6-module-qtquick-templates \
     qml6-module-qtquick-window
+
+if [ -n "${APT_ARCHIVES_DIR:-}" ]; then
+    # apt leaves partial/ owned by _apt with mode 700; make the cache readable for saving.
+    chmod -R a+rX "${APT_ARCHIVES_DIR}"
+fi
 
 LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage"
 LINUXDEPLOY_QT_URL="https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-qt-x86_64.AppImage"
